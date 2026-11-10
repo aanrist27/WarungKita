@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Herista Shop – Kasir Toko Kelontong</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#0f4c3a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
+<script>
+tailwind.config={theme:{extend:{fontFamily:{sans:['"Plus Jakarta Sans"','system-ui','sans-serif']},
+colors:{pine:{50:'#eef6f3',100:'#d5eae3',500:'#1f7a62',600:'#176550',700:'#0f4c3a',900:'#0a2f24'},sun:{400:'#f5b82e',500:'#e9a516'}}}}}
+</script>
+<style>
+[x-cloak]{display:none!important}
+body{background:#eef2f1;-webkit-tap-highlight-color:transparent;overscroll-behavior-y:contain}
+#reader video{width:100%!important;object-fit:cover}
+.pb-safe{padding-bottom:env(safe-area-inset-bottom,0)}
+input:focus,select:focus{outline:2px solid #1f7a62;outline-offset:1px}
+@media print{body *{visibility:hidden}#receipt,#receipt *{visibility:visible}#receipt{position:absolute;left:0;top:0;width:100%;box-shadow:none}.no-print{display:none!important}}
+</style>
+</head>
+<body class="font-sans text-slate-800 min-h-screen" x-data="app()" x-init="init()" x-cloak>
+
+<!-- HEADER -->
+<header class="bg-pine-700 text-white sticky top-0 z-30 no-print">
+  <div class="max-w-7xl mx-auto px-4 h-14 flex items-center gap-3">
+    <div class="w-8 h-8 rounded-lg bg-sun-400 text-pine-900 grid place-items-center font-extrabold">HS</div>
+    <h1 class="font-extrabold text-lg tracking-tight">Herista Shop</h1>
+    <nav class="hidden md:flex ml-6 gap-1">
+      <template x-for="t in tabs" :key="t.id">
+        <button @click="tab=t.id" class="px-4 py-1.5 rounded-lg text-sm font-semibold transition"
+          :class="tab===t.id?'bg-white text-pine-700':'text-pine-100 hover:bg-pine-600'" x-text="t.label"></button>
+      </template>
+    </nav>
+    <button x-show="installEvt" @click="installApp()" class="ml-auto px-3 py-1.5 rounded-lg bg-sun-400 text-pine-900 text-xs font-bold">Pasang aplikasi</button>
+    <div class="text-xs text-pine-100 hidden sm:block" :class="installEvt?'ml-3':'ml-auto'" x-text="new Date().toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'})"></div>
+  </div>
+</header>
+
+<!-- TOAST -->
+<div x-show="toast.msg" x-transition class="fixed top-16 left-1/2 -translate-x-1/2 z-[80] px-4 py-2 rounded-xl shadow-lg text-sm font-semibold text-white no-print"
+  :class="toast.err?'bg-red-600':'bg-pine-700'" x-text="toast.msg"></div>
+
+<main class="max-w-7xl mx-auto px-3 sm:px-4 py-4 pb-28 md:pb-6 no-print">
+
+<!-- ============ KASIR ============ -->
+<section x-show="tab==='kasir'" class="grid lg:grid-cols-[1fr_380px] gap-4">
+  <div>
+    <div class="flex gap-2 mb-3">
+      <input x-model="q" @keydown.enter.prevent="enterSearch()" type="search" placeholder="Cari nama atau ketik barcode lalu Enter…"
+        class="flex-1 min-w-0 px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm">
+      <button @click="openScan('kasir')" class="px-4 rounded-xl bg-sun-400 hover:bg-sun-500 text-pine-900 font-bold text-sm whitespace-nowrap">📷 Scan</button>
+    </div>
+    <div class="flex gap-2 overflow-x-auto pb-2 mb-2">
+      <template x-for="c in ['Semua',...cats]" :key="c">
+        <button @click="cat=c" class="px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border"
+          :class="cat===c?'bg-pine-700 text-white border-pine-700':'bg-white border-slate-200 text-slate-600'" x-text="c"></button>
+      </template>
+    </div>
+    <div class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
+      <template x-for="p in filtered" :key="p.id">
+        <button @click="addToCart(p)" :disabled="p.stock<=0"
+          class="text-left bg-white rounded-2xl p-3 border border-slate-200 hover:border-pine-500 active:scale-[.98] transition disabled:opacity-50">
+          <div class="aspect-[4/3] rounded-xl bg-pine-50 overflow-hidden grid place-items-center text-4xl mb-2">
+            <template x-if="p.img"><img :src="p.img" class="w-full h-full object-cover" loading="lazy"></template>
+            <template x-if="!p.img"><span x-text="emoji(p.cat)"></span></template>
+          </div>
+          <div class="font-semibold text-sm leading-tight line-clamp-2 min-h-[2.4em]" x-text="p.name"></div>
+          <div class="flex items-end justify-between mt-1">
+            <span class="font-extrabold text-pine-700" x-text="rp(p.sell)"></span>
+            <span class="text-[11px] font-semibold" :class="p.stock<=0?'text-red-600':p.stock<5?'text-amber-600':'text-slate-400'"
+              x-text="p.stock<=0?'Habis':'Stok '+p.stock"></span>
+          </div>
+        </button>
+      </template>
+    </div>
+    <p x-show="!filtered.length" class="text-center text-slate-400 py-12 text-sm">Produk tidak ditemukan. Coba kata kunci lain atau scan barcode.</p>
+  </div>
+
+  <!-- KERANJANG -->
+  <aside :class="showCart?'flex':'hidden lg:flex'" class="fixed lg:sticky inset-0 lg:inset-auto lg:top-[4.5rem] z-40 lg:z-10 flex-col bg-white lg:rounded-2xl lg:border border-slate-200 lg:max-h-[calc(100vh-6rem)]">
+    <div class="px-4 py-3 border-b flex items-center">
+      <h2 class="font-extrabold">Keranjang <span class="text-slate-400 font-semibold text-sm" x-text="'('+cartCount+' barang)'"></span></h2>
+      <button x-show="cart.length" @click="cart=[]" class="ml-auto text-xs text-red-600 font-semibold mr-3">Kosongkan</button>
+      <button @click="showCart=false" class="lg:hidden ml-auto text-2xl leading-none text-slate-400" x-show="!cart.length">×</button>
+      <button @click="showCart=false" class="lg:hidden text-2xl leading-none text-slate-400" x-show="cart.length">×</button>
+    </div>
+    <div class="flex-1 overflow-y-auto px-4 divide-y min-h-[120px]">
+      <template x-for="i in cart" :key="i.id">
+        <div class="py-3 flex items-center gap-3">
+          <div class="flex-1 min-w-0">
+            <div class="text-sm font-semibold truncate" x-text="i.name"></div>
+            <div class="text-xs text-slate-500" x-text="rp(i.price)+' × '+i.qty"></div>
+          </div>
+          <div class="flex items-center gap-1">
+            <button @click="changeQty(i,-1)" class="w-8 h-8 rounded-lg bg-slate-100 font-bold">−</button>
+            <span class="w-7 text-center font-bold text-sm" x-text="i.qty"></span>
+            <button @click="changeQty(i,1)" class="w-8 h-8 rounded-lg bg-pine-100 text-pine-700 font-bold">+</button>
+          </div>
+          <div class="w-20 text-right font-bold text-sm" x-text="rp(i.price*i.qty)"></div>
+        </div>
+      </template>
+      <p x-show="!cart.length" class="text-center text-slate-400 text-sm py-10">Keranjang kosong.<br>Pilih produk atau scan barcode.</p>
+    </div>
+    <div class="p-4 border-t bg-slate-50 lg:rounded-b-2xl pb-safe space-y-3">
+      <div class="flex justify-between items-baseline"><span class="text-sm text-slate-500">Total</span><span class="text-2xl font-extrabold text-pine-700" x-text="rp(total)"></span></div>
+      <div>
+        <input x-model.number="paid" type="number" inputmode="numeric" min="0" placeholder="Uang diterima (Rp)" class="w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white font-semibold">
+        <div class="flex gap-1.5 mt-2 flex-wrap">
+          <button @click="paid=total" class="px-2.5 py-1 rounded-lg bg-white border text-xs font-semibold">Uang pas</button>
+          <template x-for="n in [20000,50000,100000]"><button @click="paid=n" class="px-2.5 py-1 rounded-lg bg-white border text-xs font-semibold" x-text="rp(n)"></button></template>
+        </div>
+      </div>
+      <div class="flex justify-between text-sm"><span class="text-slate-500" x-text="paid-total<0&&paid?'Kurang':'Kembalian'"></span>
+        <span class="font-bold" :class="paid-total<0?'text-red-600':'text-slate-800'" x-text="rp(Math.abs(paid-total)||0)"></span></div>
+      <button @click="checkout()" :disabled="!cart.length||paid<total" class="w-full py-3 rounded-xl bg-pine-700 hover:bg-pine-600 text-white font-extrabold disabled:bg-slate-300 disabled:cursor-not-allowed">Selesaikan Transaksi</button>
+    </div>
+  </aside>
+</section>
+
+<!-- ============ PRODUK ============ -->
+<section x-show="tab==='produk'">
+  <div class="flex flex-wrap gap-2 mb-3">
+    <input x-model="q" type="search" placeholder="Cari nama atau barcode…" class="flex-1 min-w-[180px] px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm">
+    <select x-model="cat" class="px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-sm">
+      <option>Semua</option><template x-for="c in cats"><option x-text="c"></option></template>
+    </select>
+    <button @click="openScan('stok')" class="px-4 py-2.5 rounded-xl bg-sun-400 hover:bg-sun-500 text-pine-900 font-bold text-sm">📷 Scan Stok</button>
+    <button @click="openForm(null)" class="px-4 py-2.5 rounded-xl bg-pine-700 text-white font-bold text-sm">+ Produk Baru</button>
+  </div>
+  <div class="flex gap-3 text-xs font-semibold mb-3">
+    <span class="px-3 py-1 rounded-full bg-white border" x-text="products.length+' produk'"></span>
+    <span class="px-3 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200" x-text="products.filter(p=>p.stock<5).length+' stok menipis'"></span>
+  </div>
+  <div class="bg-white rounded-2xl border border-slate-200 divide-y">
+    <template x-for="p in filtered" :key="p.id">
+      <div class="p-3 flex items-center gap-3">
+        <div class="w-14 h-14 rounded-xl bg-pine-50 overflow-hidden grid place-items-center text-2xl shrink-0">
+          <template x-if="p.img"><img :src="p.img" class="w-full h-full object-cover"></template>
+          <template x-if="!p.img"><span x-text="emoji(p.cat)"></span></template>
+        </div>
+        <div class="flex-1 min-w-0">
+          <div class="font-semibold text-sm truncate" x-text="p.name"></div>
+          <div class="text-xs text-slate-500 truncate" x-text="(p.barcode||'tanpa barcode')+' • '+p.cat"></div>
+          <div class="text-xs mt-0.5"><span class="text-slate-400">Beli</span> <span x-text="rp(p.buy)"></span> <span class="text-slate-400 ml-2">Jual</span> <b class="text-pine-700" x-text="rp(p.sell)"></b></div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="font-extrabold" x-text="p.stock"></div>
+          <span x-show="p.stock<5" class="inline-block text-[10px] font-bold px-2 py-0.5 rounded-full" :class="p.stock<=0?'bg-red-100 text-red-700':'bg-amber-100 text-amber-700'" x-text="p.stock<=0?'Habis':'Stok menipis'"></span>
+        </div>
+        <div class="flex flex-col gap-1 shrink-0">
+          <button @click="openForm(p)" class="px-3 py-1 rounded-lg bg-pine-100 text-pine-700 text-xs font-bold">Edit</button>
+          <button @click="del(p)" class="px-3 py-1 rounded-lg bg-red-50 text-red-600 text-xs font-bold">Hapus</button>
+        </div>
+      </div>
+    </template>
+    <p x-show="!filtered.length" class="text-center text-slate-400 py-12 text-sm">Belum ada produk yang cocok. Tambahkan produk baru atau scan barcode.</p>
+  </div>
+</section>
+
+<!-- ============ RIWAYAT ============ -->
+<section x-show="tab==='riwayat'">
+  <div class="grid grid-cols-3 gap-3 mb-4">
+    <div class="bg-white rounded-2xl border p-4"><div class="text-xs text-slate-500">Transaksi hari ini</div><div class="text-2xl font-extrabold" x-text="today.length"></div></div>
+    <div class="bg-white rounded-2xl border p-4"><div class="text-xs text-slate-500">Omzet hari ini</div><div class="text-lg sm:text-2xl font-extrabold text-pine-700" x-text="rp(today.reduce((a,s)=>a+s.total,0))"></div></div>
+    <div class="bg-white rounded-2xl border p-4"><div class="text-xs text-slate-500">Laba hari ini</div><div class="text-lg sm:text-2xl font-extrabold" x-text="rp(today.reduce((a,s)=>a+s.items.reduce((b,i)=>b+(i.price-i.buy)*i.qty,0),0))"></div></div>
+  </div>
+  <div class="bg-white rounded-2xl border divide-y">
+    <template x-for="s in sales" :key="s.id">
+      <button @click="receipt=s" class="w-full text-left p-3 flex items-center gap-3 hover:bg-slate-50">
+        <div class="flex-1 min-w-0"><div class="font-semibold text-sm" x-text="s.id"></div>
+          <div class="text-xs text-slate-500" x-text="fmtDate(s.time)+' • '+s.items.reduce((a,i)=>a+i.qty,0)+' barang'"></div></div>
+        <div class="font-extrabold text-pine-700" x-text="rp(s.total)"></div>
+      </button>
+    </template>
+    <p x-show="!sales.length" class="text-center text-slate-400 py-12 text-sm">Belum ada transaksi. Selesaikan penjualan pertama di tab Kasir.</p>
+  </div>
+</section>
+<!-- ============ DATA (EKSPOR / IMPOR) ============ -->
+<section x-show="tab==='data'" class="max-w-2xl space-y-4">
+  <div class="bg-white rounded-2xl border p-5">
+    <h2 class="font-extrabold">Ekspor data</h2>
+    <p class="text-sm text-slate-500 mt-1">Simpan semua produk dan riwayat transaksi ke file. Gunakan untuk pindah perangkat atau berjaga-jaga bila data browser terhapus.</p>
+    <div class="flex flex-wrap gap-2 mt-4">
+      <button @click="exportJSON()" class="px-4 py-2.5 rounded-xl bg-pine-700 text-white font-bold text-sm">Unduh cadangan (.json)</button>
+      <button @click="exportCSV('produk')" class="px-4 py-2.5 rounded-xl bg-pine-100 text-pine-700 font-bold text-sm">Produk (.csv)</button>
+      <button @click="exportCSV('riwayat')" class="px-4 py-2.5 rounded-xl bg-pine-100 text-pine-700 font-bold text-sm">Riwayat (.csv)</button>
+    </div>
+    <p class="text-xs text-slate-400 mt-2">File CSV memakai pemisah titik koma (;) agar langsung rapi di Excel Indonesia. Cadangan .json adalah satu-satunya yang bisa diimpor kembali.</p>
+  </div>
+
+  <div class="bg-white rounded-2xl border p-5">
+    <h2 class="font-extrabold">Impor data</h2>
+    <p class="text-sm text-slate-500 mt-1">Pilih file cadangan .json yang diunduh dari aplikasi ini.</p>
+    <input type="file" accept=".json,application/json" @change="readImport($event)" class="mt-3 text-sm w-full">
+    <div x-show="pending" class="mt-4 rounded-xl bg-slate-50 border p-4 space-y-3">
+      <div class="text-sm"><b x-text="pending&&pending.name"></b><br>
+        <span class="text-slate-600" x-text="pending?pending.products.length+' produk dan '+pending.sales.length+' transaksi ditemukan':''"></span></div>
+      <label class="flex gap-2 text-sm items-start"><input type="radio" value="merge" x-model="importMode" class="mt-1">
+        <span><b>Gabungkan</b> – data lama tetap ada. Produk dengan barcode sama diperbarui, transaksi yang sudah ada dilewati.</span></label>
+      <label class="flex gap-2 text-sm items-start"><input type="radio" value="replace" x-model="importMode" class="mt-1">
+        <span><b>Ganti semua</b> – seluruh data saat ini dihapus dan diganti isi file.</span></label>
+      <div class="flex gap-2">
+        <button @click="applyImport()" class="px-4 py-2.5 rounded-xl bg-pine-700 text-white font-bold text-sm">Impor sekarang</button>
+        <button @click="pending=null" class="px-4 py-2.5 rounded-xl bg-white border font-bold text-sm">Batal</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-2xl border border-red-200 p-5">
+    <h2 class="font-extrabold text-red-700">Hapus semua data</h2>
+    <p class="text-sm text-slate-500 mt-1">Menghapus seluruh produk dan riwayat transaksi di browser ini. Unduh cadangan terlebih dahulu.</p>
+    <button @click="resetAll()" class="mt-3 px-4 py-2.5 rounded-xl bg-red-50 text-red-700 font-bold text-sm">Hapus semua data</button>
+  </div>
+</section>
+</main>
+
+<!-- BOTTOM NAV (mobile) -->
+<nav class="md:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t no-print pb-safe">
+  <div x-show="tab==='kasir'&&cart.length&&!showCart" class="px-3 pt-2">
+    <button @click="showCart=true" class="w-full flex justify-between items-center px-4 py-3 rounded-xl bg-pine-700 text-white font-bold">
+      <span x-text="'Lihat keranjang ('+cartCount+')'"></span><span x-text="rp(total)"></span></button>
+  </div>
+  <div class="grid grid-cols-4">
+    <template x-for="t in tabs" :key="t.id">
+      <button @click="tab=t.id" class="py-2.5 text-xs font-bold flex flex-col items-center gap-0.5" :class="tab===t.id?'text-pine-700':'text-slate-400'">
+        <span class="text-lg" x-text="t.icon"></span><span x-text="t.label"></span></button>
+    </template>
+  </div>
+</nav>
+
+<!-- ============ MODAL SCANNER ============ -->
+<div x-show="scan.open" class="fixed inset-0 z-[60] bg-black/70 grid place-items-center p-3 no-print">
+  <div class="bg-white rounded-2xl w-full max-w-md overflow-hidden">
+    <div class="p-3 flex items-center gap-2 border-b">
+      <div class="flex bg-slate-100 rounded-lg p-0.5 text-xs font-bold" x-show="scan.mode!=='field'">
+        <button @click="scan.mode='kasir'" class="px-3 py-1.5 rounded-md" :class="scan.mode==='kasir'?'bg-pine-700 text-white':'text-slate-500'">Mode Kasir</button>
+        <button @click="scan.mode='stok'" class="px-3 py-1.5 rounded-md" :class="scan.mode==='stok'?'bg-pine-700 text-white':'text-slate-500'">Mode Stok</button>
+      </div>
+      <span x-show="scan.mode==='field'" class="font-bold text-sm">Scan barcode produk</span>
+      <button @click="closeScan()" class="ml-auto text-2xl leading-none text-slate-400 px-2">×</button>
+    </div>
+    <div class="bg-black min-h-[220px]"><div id="reader"></div></div>
+    <div class="p-3 space-y-2">
+      <p class="text-xs" :class="scan.err?'text-red-600':'text-slate-500'" x-text="scan.err||(scan.mode==='kasir'?'Arahkan kamera ke barcode. Produk langsung masuk keranjang; scan ulang menambah jumlah.':scan.mode==='stok'?'Produk ada → edit harga/stok. Belum ada → form produk baru terisi barcode.':'Barcode akan diisi ke form produk.')"></p>
+      <form @submit.prevent="onScan(scan.manual,true);scan.manual=''" class="flex gap-2">
+        <input x-model="scan.manual" placeholder="Atau ketik barcode manual" class="flex-1 px-3 py-2 rounded-lg border text-sm">
+        <button class="px-4 rounded-lg bg-pine-700 text-white text-sm font-bold">OK</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL FORM PRODUK ============ -->
+<div x-show="form" class="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center no-print">
+  <div class="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-2xl max-h-[92vh] overflow-y-auto" @click.outside="form=null">
+    <template x-if="form">
+    <form @submit.prevent="saveForm()" class="p-5 space-y-3">
+      <div class="flex items-center"><h3 class="font-extrabold text-lg" x-text="form.id?'Edit Produk':'Tambah Produk Baru'"></h3>
+        <button type="button" @click="form=null" class="ml-auto text-2xl text-slate-400 leading-none">×</button></div>
+      <label class="block text-sm font-semibold">Nama produk
+        <input x-model="form.name" required class="mt-1 w-full px-3 py-2.5 rounded-xl border font-normal"></label>
+      <label class="block text-sm font-semibold">Barcode
+        <div class="mt-1 flex gap-2"><input x-model="form.barcode" inputmode="numeric" class="flex-1 min-w-0 px-3 py-2.5 rounded-xl border font-normal" placeholder="Scan atau ketik">
+        <button type="button" @click="openScan('field')" class="px-4 rounded-xl bg-sun-400 font-bold">📷</button></div></label>
+      <div class="grid grid-cols-2 gap-3">
+        <label class="block text-sm font-semibold">Harga beli<input x-model.number="form.buy" type="number" min="0" required class="mt-1 w-full px-3 py-2.5 rounded-xl border font-normal"></label>
+        <label class="block text-sm font-semibold">Harga jual<input x-model.number="form.sell" type="number" min="0" required class="mt-1 w-full px-3 py-2.5 rounded-xl border font-normal"></label>
+        <label class="block text-sm font-semibold">Stok saat ini<input x-model.number="form.stock" type="number" min="0" required class="mt-1 w-full px-3 py-2.5 rounded-xl border font-normal"></label>
+        <label class="block text-sm font-semibold">Kategori<select x-model="form.cat" class="mt-1 w-full px-3 py-2.5 rounded-xl border font-normal bg-white"><template x-for="c in cats"><option x-text="c"></option></template></select></label>
+      </div>
+      <div class="text-sm font-semibold">Foto produk
+        <div class="mt-1 flex gap-3 items-center">
+          <div class="w-16 h-16 rounded-xl bg-pine-50 overflow-hidden grid place-items-center text-2xl shrink-0">
+            <template x-if="form.img"><img :src="form.img" class="w-full h-full object-cover"></template>
+            <template x-if="!form.img"><span x-text="emoji(form.cat)"></span></template></div>
+          <div class="flex-1 space-y-1.5">
+            <input x-model="form.img" placeholder="Tempel URL gambar" class="w-full px-3 py-2 rounded-lg border text-xs font-normal">
+            <input type="file" accept="image/*" @change="pickImage($event)" class="text-xs font-normal w-full">
+          </div></div></div>
+      <button class="w-full py-3 rounded-xl bg-pine-700 text-white font-extrabold">Simpan produk</button>
+    </form></template>
+  </div>
+</div>
+
+<!-- ============ MODAL STRUK ============ -->
+<div x-show="receipt" class="fixed inset-0 z-[70] bg-black/60 grid place-items-center p-3 overflow-y-auto">
+  <div class="w-full max-w-sm my-auto">
+    <template x-if="receipt">
+    <div id="receipt" class="bg-white rounded-2xl p-5 shadow-xl text-sm" style="font-family:ui-monospace,Menlo,monospace">
+      <div class="text-center mb-3"><div class="font-extrabold text-base">Herista Shop</div><div class="text-xs text-slate-500">Terima kasih sudah berbelanja</div></div>
+      <div class="border-y border-dashed py-2 text-xs text-slate-600"><div x-text="receipt.id"></div><div x-text="fmtDate(receipt.time)"></div></div>
+      <div class="py-2 space-y-1.5">
+        <template x-for="i in receipt.items"><div>
+          <div x-text="i.name"></div>
+          <div class="flex justify-between text-xs text-slate-600"><span x-text="i.qty+' × '+rp(i.price)"></span><span x-text="rp(i.qty*i.price)"></span></div></div></template>
+      </div>
+      <div class="border-t border-dashed pt-2 space-y-0.5">
+        <div class="flex justify-between font-bold"><span>TOTAL</span><span x-text="rp(receipt.total)"></span></div>
+        <div class="flex justify-between"><span>Bayar</span><span x-text="rp(receipt.paid)"></span></div>
+        <div class="flex justify-between"><span>Kembali</span><span x-text="rp(receipt.paid-receipt.total)"></span></div>
+      </div>
+    </div></template>
+    <div class="flex gap-2 mt-3 no-print">
+      <button @click="window.print()" class="flex-1 py-3 rounded-xl bg-sun-400 font-bold text-pine-900">🖨 Cetak</button>
+      <button @click="receipt=null" class="flex-1 py-3 rounded-xl bg-white font-bold">Tutup</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const CATS=['Sembako','Minuman','Makanan Ringan','Sabun & Mandi','Lain-lain'];
+const EMO={'Sembako':'🌾','Minuman':'🥤','Makanan Ringan':'🍪','Sabun & Mandi':'🧼','Lain-lain':'📦'};
+const rp=n=>'Rp'+new Intl.NumberFormat('id-ID').format(Math.round(n||0));
+const load=(k,d)=>{try{const v=JSON.parse(localStorage.getItem(k));return v??d}catch(e){return d}};
+const seed=()=>[
+ ['Beras Premium 5kg','8999000000011',62000,69000,12,'Sembako'],['Minyak Goreng 1L','8999000000028',16000,18500,3,'Sembako'],
+ ['Gula Pasir 1kg','8999000000035',14000,16500,20,'Sembako'],['Teh Botol 450ml','8999000000042',3500,5000,24,'Minuman'],
+ ['Air Mineral 600ml','8999000000059',2000,3500,48,'Minuman'],['Keripik Singkong','8999000000066',6000,8500,9,'Makanan Ringan'],
+ ['Mi Instan Goreng','8999000000073',2800,3500,40,'Makanan Ringan'],['Sabun Mandi Batang','8999000000080',3000,4500,4,'Sabun & Mandi'],
+ ['Sampo Sachet','8999000000097',500,1000,60,'Sabun & Mandi']
+].map((a,i)=>({id:'p'+i,name:a[0],barcode:a[1],buy:a[2],sell:a[3],stock:a[4],cat:a[5],img:''}));
+
+function app(){return{
+ tab:'kasir',tabs:[{id:'kasir',label:'Kasir',icon:'🛒'},{id:'produk',label:'Produk',icon:'📦'},{id:'riwayat',label:'Riwayat',icon:'🧾'},{id:'data',label:'Data',icon:'💾'}],
+ products:load('wk_products',null)||seed(),sales:load('wk_sales',[]),cart:[],cats:CATS,
+ q:'',cat:'Semua',paid:'',showCart:false,form:null,receipt:null,
+ scan:{open:false,mode:'kasir',err:'',manual:''},scanner:null,last:{code:'',t:0},toast:{msg:'',err:false},_t:null,rp,pending:null,importMode:'merge',installEvt:null,
+
+ init(){window.addEventListener('beforeinstallprompt',e=>{e.preventDefault();this.installEvt=e});
+  window.addEventListener('appinstalled',()=>{this.installEvt=null;this.notify('Aplikasi terpasang')});
+  if('serviceWorker' in navigator&&location.protocol.startsWith('http'))navigator.serviceWorker.register('sw.js').catch(()=>{});
+  this.$watch('products',()=>this.persist(),{deep:true});this.$watch('sales',()=>this.persist(),{deep:true});this.persist()},
+ persist(){try{localStorage.setItem('wk_products',JSON.stringify(this.products));localStorage.setItem('wk_sales',JSON.stringify(this.sales))}
+  catch(e){this.notify('Penyimpanan penuh. Gunakan foto lebih kecil.',true)}},
+ notify(msg,err=false){this.toast={msg,err};clearTimeout(this._t);this._t=setTimeout(()=>this.toast.msg='',2200)},
+ emoji:c=>EMO[c]||'📦',
+ fmtDate:t=>new Date(t).toLocaleString('id-ID',{dateStyle:'medium',timeStyle:'short'}),
+ beep(){try{const c=new (window.AudioContext||window.webkitAudioContext)(),o=c.createOscillator();o.frequency.value=880;o.connect(c.destination);o.start();setTimeout(()=>{o.stop();c.close()},90)}catch(e){}},
+
+ get filtered(){const s=this.q.trim().toLowerCase();
+  return this.products.filter(p=>(this.cat==='Semua'||p.cat===this.cat)&&(!s||p.name.toLowerCase().includes(s)||(p.barcode||'').includes(s)))},
+ get total(){return this.cart.reduce((a,i)=>a+i.price*i.qty,0)},
+ get cartCount(){return this.cart.reduce((a,i)=>a+i.qty,0)},
+ get today(){const d=new Date().toDateString();return this.sales.filter(s=>new Date(s.time).toDateString()===d)},
+ byCode:function(c){c=String(c).trim();return c?this.products.find(p=>p.barcode===c):null},
+
+ /* KASIR */
+ addToCart(p){
+  if(p.stock<=0)return this.notify(p.name+' habis',true);
+  const it=this.cart.find(i=>i.id===p.id);
+  if(it){if(it.qty+1>p.stock)return this.notify('Stok '+p.name+' hanya '+p.stock,true);it.qty++}
+  else this.cart.push({id:p.id,name:p.name,price:p.sell,buy:p.buy,qty:1});
+  this.notify(p.name+' × '+this.cart.find(i=>i.id===p.id).qty);
+ },
+ changeQty(i,d){const p=this.products.find(x=>x.id===i.id);const n=i.qty+d;
+  if(n<=0)this.cart=this.cart.filter(x=>x!==i);
+  else if(p&&n>p.stock)this.notify('Stok '+i.name+' hanya '+p.stock,true);else i.qty=n},
+ enterSearch(){const p=this.byCode(this.q);if(p){this.addToCart(p);this.q=''}else if(this.filtered.length===1){this.addToCart(this.filtered[0]);this.q=''}},
+ checkout(){
+  if(!this.cart.length||this.paid<this.total)return;
+  for(const i of this.cart){const p=this.products.find(x=>x.id===i.id);if(!p||p.stock<i.qty)return this.notify('Stok '+i.name+' tidak cukup',true)}
+  this.cart.forEach(i=>{this.products.find(x=>x.id===i.id).stock-=i.qty});
+  const s={id:'TRX'+Date.now().toString().slice(-8),time:Date.now(),items:JSON.parse(JSON.stringify(this.cart)),total:this.total,paid:Number(this.paid)};
+  this.sales.unshift(s);this.receipt=s;this.cart=[];this.paid='';this.showCart=false;
+ },
+
+ /* PRODUK */
+ openForm(p,code=''){this.form=p?{...p}:{id:null,name:'',barcode:code,buy:'',sell:'',stock:'',cat:CATS[0],img:''}},
+ saveForm(){const f=this.form;
+  if(f.barcode&&this.products.some(p=>p.barcode===f.barcode&&p.id!==f.id))return this.notify('Barcode sudah dipakai produk lain',true);
+  if(f.id){const i=this.products.findIndex(p=>p.id===f.id);this.products[i]={...f};
+   this.cart.forEach(c=>{if(c.id===f.id){c.price=f.sell;c.name=f.name;c.buy=f.buy}})}
+  else this.products.unshift({...f,id:'p'+Date.now()});
+  this.notify('Produk disimpan');this.form=null},
+ del(p){if(confirm('Hapus "'+p.name+'"?')){this.products=this.products.filter(x=>x.id!==p.id);this.cart=this.cart.filter(c=>c.id!==p.id)}},
+ pickImage(e){const file=e.target.files[0];if(!file)return;const r=new FileReader();
+  r.onload=()=>{const im=new Image();im.onload=()=>{const m=240,k=Math.min(1,m/Math.max(im.width,im.height)),c=document.createElement('canvas');
+   c.width=im.width*k;c.height=im.height*k;c.getContext('2d').drawImage(im,0,0,c.width,c.height);this.form.img=c.toDataURL('image/jpeg',.7)};im.src=r.result};r.readAsDataURL(file)},
+
+ installApp(){if(!this.installEvt)return;this.installEvt.prompt();this.installEvt=null},
+ /* DATA */
+ stamp:()=>new Date().toISOString().slice(0,10),
+ download(name,text,type){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type}));a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000)},
+ exportJSON(){this.download('warungkita-backup-'+this.stamp()+'.json',JSON.stringify({app:'warung-kita',version:1,exportedAt:new Date().toISOString(),products:this.products,sales:this.sales},null,2),'application/json');this.notify('Cadangan diunduh')},
+ exportCSV(kind){const esc=v=>'"'+String(v??'').replace(/"/g,'""')+'"';let rows;
+  if(kind==='produk')rows=[['Nama','Barcode','Kategori','Harga Beli','Harga Jual','Stok'],...this.products.map(p=>[p.name,p.barcode,p.cat,p.buy,p.sell,p.stock])];
+  else rows=[['No Transaksi','Waktu','Produk','Qty','Harga Jual','Harga Beli','Subtotal'],...this.sales.flatMap(s=>s.items.map(i=>[s.id,new Date(s.time).toLocaleString('id-ID'),i.name,i.qty,i.price,i.buy,i.price*i.qty]))];
+  this.download('warungkita-'+kind+'-'+this.stamp()+'.csv','\ufeff'+rows.map(r=>r.map(esc).join(';')).join('\r\n'),'text/csv');this.notify('File CSV diunduh')},
+ readImport(e){const f=e.target.files[0];e.target.value='';if(!f)return;const r=new FileReader();
+  r.onload=()=>{try{const d=JSON.parse(r.result);if(!d||!Array.isArray(d.products))throw 0;
+   const num=v=>Math.max(0,Number(v)||0);
+   const products=d.products.filter(p=>p&&String(p.name||'').trim()).map((p,i)=>({id:String(p.id||'p'+Date.now()+i),name:String(p.name).trim(),barcode:String(p.barcode||'').trim(),buy:num(p.buy),sell:num(p.sell),stock:num(p.stock),cat:String(p.cat||CATS[0]),img:String(p.img||'')}));
+   const sales=(Array.isArray(d.sales)?d.sales:[]).filter(s=>s&&s.id&&Array.isArray(s.items)).map(s=>({id:String(s.id),time:Number(s.time)||Date.now(),total:num(s.total),paid:num(s.paid),items:s.items.map(i=>({id:String(i.id||''),name:String(i.name||''),price:num(i.price),buy:num(i.buy),qty:num(i.qty)}))}));
+   this.pending={name:f.name,products,sales}}
+  catch(err){this.pending=null;this.notify('File tidak valid. Pilih file cadangan .json dari aplikasi ini.',true)}};
+  r.readAsText(f)},
+ applyImport(){const d=this.pending;if(!d)return;
+  if(this.importMode==='replace'){this.products=d.products;this.sales=[...d.sales].sort((a,b)=>b.time-a.time)}
+  else{const prods=[...this.products];
+   d.products.forEach(n=>{const i=n.barcode?prods.findIndex(p=>p.barcode===n.barcode):prods.findIndex(p=>!p.barcode&&p.name.toLowerCase()===n.name.toLowerCase());
+    if(i>=0)prods[i]={...n,id:prods[i].id};
+    else{if(prods.some(p=>p.id===n.id))n.id='p'+Date.now()+Math.random().toString(36).slice(2,6);prods.push(n)}});
+   this.products=prods;const ids=new Set(this.sales.map(s=>s.id));
+   this.sales=[...this.sales,...d.sales.filter(s=>!ids.has(s.id))].sort((a,b)=>b.time-a.time)}
+  this.cart=[];this.paid='';this.notify('Impor selesai: '+d.products.length+' produk, '+d.sales.length+' transaksi');this.pending=null},
+ resetAll(){if(confirm('Hapus SEMUA produk dan riwayat? Pastikan sudah mengunduh cadangan.')){this.products=[];this.sales=[];this.cart=[];this.notify('Semua data dihapus')}},
+
+ /* SCANNER */
+ async openScan(mode){
+  if(this.scan.open)return;
+  this.scan={open:true,mode,err:'',manual:''};await this.$nextTick();
+  if(!window.Html5Qrcode)return this.scan.err='Pustaka scanner belum termuat. Periksa koneksi internet.';
+  try{const F=Html5QrcodeSupportedFormats;
+   this.scanner=new Html5Qrcode('reader',{verbose:false,formatsToSupport:[F.EAN_13,F.EAN_8,F.UPC_A,F.UPC_E,F.CODE_128,F.CODE_39,F.QR_CODE]});
+   await this.scanner.start({facingMode:'environment'},{fps:10,qrbox:{width:260,height:140}},c=>this.onScan(c),()=>{});
+  }catch(e){this.scan.err='Kamera tidak bisa dibuka. Izinkan akses kamera dan buka lewat https:// atau localhost. Anda tetap bisa mengetik barcode.'}
+ },
+ async closeScan(){
+  if(this.scanner){try{await this.scanner.stop();this.scanner.clear()}catch(e){}this.scanner=null}
+  this.scan.open=false},
+ async onScan(code,manual=false){
+  code=String(code).trim();if(!code)return;
+  const now=Date.now();if(!manual&&code===this.last.code&&now-this.last.t<1500)return;
+  this.last={code,t:now};this.beep();const p=this.byCode(code),m=this.scan.mode;
+  if(m==='kasir'){p?this.addToCart(p):this.notify('Barcode '+code+' belum terdaftar',true)}
+  else if(m==='stok'){await this.closeScan();p?this.openForm(p):(this.openForm(null,code),this.notify('Produk baru: barcode terisi'))}
+  else{await this.closeScan();if(this.form)this.form.barcode=code}
+ }
+}}
+</script>
+</body>
+</html>
